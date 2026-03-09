@@ -189,6 +189,7 @@ export async function execute(interaction, uplupAPI) {
 
         const attachment = new AttachmentBuilder(gifBuffer, { name: 'wheel-spin.gif' });
 
+        const spinTimestamp = Math.floor(Date.now() / 1000);
         const embed = new EmbedBuilder()
           .setColor(0x6C60D7)
           .setTitle(`${wheel.wheel_name}`)
@@ -196,13 +197,13 @@ export async function execute(interaction, uplupAPI) {
           .addFields(
             { name: 'Winner', value: `**${winner}**`, inline: true },
             { name: 'Entries', value: `${entries.length}`, inline: true },
-            { name: 'Spin #', value: `${(wheel.total_spins || 0) + 1}`, inline: true }
+            { name: 'Spin #', value: `${(wheel.total_spins || 0) + 1}`, inline: true },
+            { name: 'Spun at', value: `<t:${spinTimestamp}:f>`, inline: true }
           )
           .setFooter({
             text: 'Powered by Uplup',
             iconURL: 'https://uplup.com/favicon.ico'
-          })
-          .setTimestamp();
+          });
 
         await interaction.editReply({
           embeds: [embed],

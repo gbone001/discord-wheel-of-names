@@ -96,10 +96,9 @@ export async function generateWheelGIF(entries, options = {}) {
       ctx.save();
       ctx.rotate(startAngle + sliceAngle / 2);
       ctx.textAlign = 'right';
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${Math.min(16, Math.floor(400 / entries.length))}px Arial`;
-      ctx.shadowColor = 'rgba(0,0,0,0.5)';
-      ctx.shadowBlur = 3;
+      ctx.textBaseline = 'middle';
+      const fontSize = Math.max(8, Math.min(20, Math.floor(600 / entries.length)));
+      ctx.font = `bold ${fontSize}px sans-serif`;
 
       // Truncate long names
       let displayName = entries[i];
@@ -108,7 +107,13 @@ export async function generateWheelGIF(entries, options = {}) {
         displayName = displayName.substring(0, maxLength - 2) + '..';
       }
 
-      ctx.fillText(displayName, radius - 15, 5);
+      // Draw text outline for GIF visibility (no shadows — GIF can't handle translucency)
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(displayName, radius - 15, 0);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(displayName, radius - 15, 0);
       ctx.restore();
     }
 
@@ -206,10 +211,9 @@ export async function generateWheelImage(entries, winner, options = {}) {
     ctx.save();
     ctx.rotate(startAngle + sliceAngle / 2);
     ctx.textAlign = 'right';
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.min(14, Math.floor(300 / entries.length))}px Arial`;
-    ctx.shadowColor = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur = 3;
+    ctx.textBaseline = 'middle';
+    const staticFontSize = Math.max(8, Math.min(18, Math.floor(500 / entries.length)));
+    ctx.font = `bold ${staticFontSize}px sans-serif`;
 
     let displayName = entries[i];
     const maxLength = Math.floor(radius / 10);
@@ -217,7 +221,13 @@ export async function generateWheelImage(entries, winner, options = {}) {
       displayName = displayName.substring(0, maxLength - 2) + '..';
     }
 
-    ctx.fillText(displayName, radius - 10, 5);
+    // Outline + fill for crisp text on PNG
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 3;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(displayName, radius - 10, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(displayName, radius - 10, 0);
     ctx.restore();
   }
 
@@ -246,12 +256,12 @@ export async function generateWheelImage(entries, winner, options = {}) {
 
   // Winner text at bottom
   ctx.fillStyle = '#FFD700';
-  ctx.font = 'bold 24px Arial';
+  ctx.font = 'bold 24px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('🎉 WINNER 🎉', centerX, height - 45);
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 28px Arial';
+  ctx.font = 'bold 28px sans-serif';
   ctx.fillText(winner, centerX, height - 15);
 
   return canvas.toBuffer('image/png');

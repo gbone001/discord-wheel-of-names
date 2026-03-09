@@ -296,20 +296,21 @@ export async function execute(interaction, uplupAPI) {
     // Create attachment
     const attachment = new AttachmentBuilder(gifBuffer, { name: 'wheel-spin.gif' });
 
-    // Create embed
+    // Create embed with Discord timestamp (shows viewer's local timezone on hover)
+    const spinTimestamp = Math.floor(Date.now() / 1000);
     const embed = new EmbedBuilder()
       .setColor(0x6C60D7)
       .setTitle(wheelName)
       .setImage('attachment://wheel-spin.gif')
       .addFields(
         { name: 'Winner', value: `**${winner}**`, inline: true },
-        { name: 'Entries', value: `${entries.length}`, inline: true }
+        { name: 'Entries', value: `${entries.length}`, inline: true },
+        { name: 'Spun at', value: `<t:${spinTimestamp}:f>`, inline: true }
       )
       .setFooter({
         text: 'Powered by Uplup',
         iconURL: 'https://uplup.com/favicon.ico'
-      })
-      .setTimestamp();
+      });
 
     // Log to Uplup API if available
     if (uplupAPI) {
