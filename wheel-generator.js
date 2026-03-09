@@ -3,8 +3,14 @@
  * Generates animated spinning wheel GIFs for Discord
  */
 
-import { createCanvas } from '@napi-rs/canvas';
+import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
 import GIFEncoder from 'gif-encoder-2';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+// Register bundled font (Linux/Railway doesn't have Arial)
+const __dirname = dirname(fileURLToPath(import.meta.url));
+GlobalFonts.registerFromPath(join(__dirname, 'fonts', 'Inter-Bold.ttf'), 'Inter');
 
 // Vibrant color palettes matching Uplup's theme
 const COLOR_PALETTES = {
@@ -98,7 +104,7 @@ export async function generateWheelGIF(entries, options = {}) {
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
       const fontSize = Math.max(8, Math.min(20, Math.floor(600 / entries.length)));
-      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.font = `bold ${fontSize}px Inter`;
 
       // Truncate long names
       let displayName = entries[i];
@@ -213,7 +219,7 @@ export async function generateWheelImage(entries, winner, options = {}) {
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     const staticFontSize = Math.max(8, Math.min(18, Math.floor(500 / entries.length)));
-    ctx.font = `bold ${staticFontSize}px sans-serif`;
+    ctx.font = `bold ${staticFontSize}px Inter`;
 
     let displayName = entries[i];
     const maxLength = Math.floor(radius / 10);
@@ -256,12 +262,12 @@ export async function generateWheelImage(entries, winner, options = {}) {
 
   // Winner text at bottom
   ctx.fillStyle = '#FFD700';
-  ctx.font = 'bold 24px sans-serif';
+  ctx.font = 'bold 24px Inter';
   ctx.textAlign = 'center';
   ctx.fillText('🎉 WINNER 🎉', centerX, height - 45);
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 28px sans-serif';
+  ctx.font = 'bold 28px Inter';
   ctx.fillText(winner, centerX, height - 15);
 
   return canvas.toBuffer('image/png');
