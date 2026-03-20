@@ -30,12 +30,13 @@ for (const envVar of requiredEnvVars) {
 }
 
 // Initialize Uplup API client (optional - for logging and saved wheels)
+// Uses Bearer token auth with API key only (no secret needed).
+// API keys look like: uplup_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 let uplupAPI = null;
-if (process.env.UPLUP_API_KEY && process.env.UPLUP_API_SECRET) {
+if (process.env.UPLUP_API_KEY) {
   uplupAPI = new UplupAPI(
     process.env.UPLUP_API_KEY,
-    process.env.UPLUP_API_SECRET,
-    process.env.UPLUP_API_BASE_URL || 'https://api.uplup.com/api/wheel'
+    process.env.UPLUP_API_BASE_URL || 'https://api.uplup.com/api/v1'
   );
   console.log('✅ Uplup API integration enabled');
 } else {

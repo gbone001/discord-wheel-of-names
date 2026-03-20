@@ -1,34 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder, ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
 import { generateWheelGIF, generateWheelImage } from '../wheel-generator.js';
 
-/**
- * Create an embed for limit exceeded error
- */
-function createLimitExceededEmbed(limitType, current, limit, planName) {
-  const labels = {
-    maxEntries: 'entries',
-    maxWheels: 'saved wheels'
-  };
-  const label = labels[limitType] || 'items';
-
-  return new EmbedBuilder()
-    .setColor(0xFF6B6B)
-    .setTitle(`Limit Reached`)
-    .setDescription(
-      `Your **${planName}** plan allows up to **${limit}** ${label}.\n` +
-      `You have **${current}**.\n\n` +
-      `Upgrade your plan for higher limits!`
-    )
-    .addFields({
-      name: 'Upgrade Now',
-      value: '[View Pricing](https://uplup.com/pricing)'
-    })
-    .setFooter({
-      text: 'Uplup',
-      iconURL: 'https://uplup.com/favicon.ico'
-    });
-}
-
 export const data = new SlashCommandBuilder()
   .setName('wheel')
   .setDescription('Manage and spin saved wheels')
@@ -93,11 +65,10 @@ export async function execute(interaction, uplupAPI) {
     await interaction.reply({
       content: '**Uplup API not configured**\n\n' +
         'To use saved wheels, the bot owner needs to:\n' +
-        '1. Get API credentials at **uplup.com/brand/api-integrations**\n' +
-        '2. Add them to the `.env` file:\n' +
+        '1. Get an API key at **uplup.com/brand/api-integrations**\n' +
+        '2. Add it to the `.env` file:\n' +
         '```\n' +
-        'UPLUP_API_KEY=your_key\n' +
-        'UPLUP_API_SECRET=your_secret\n' +
+        'UPLUP_API_KEY=uplup_live_your_key_here\n' +
         '```\n' +
         '3. Restart the bot\n\n' +
         '**Tip:** Use `/spin custom` instead - it works without API setup!',
@@ -113,8 +84,9 @@ export async function execute(interaction, uplupAPI) {
   try {
     switch (subcommand) {
       case 'list': {
-        const response = await uplupAPI.listWheels(25, 0);
-        const wheels = response.data?.wheels || [];
+        const response = await uplupAPI.listWheels();
+        // API v1 returns { success, data: [{ wheel_id, wheel_name, created_at }] }
+        const wheels = response.data || [];
 
         if (wheels.length === 0) {
           await interaction.editReply({
@@ -134,8 +106,7 @@ export async function execute(interaction, uplupAPI) {
 
         // Add wheel list
         const wheelList = wheels.slice(0, 10).map((wheel, index) => {
-          const entriesCount = wheel.entries_count || wheel.entries?.length || '?';
-          return `**${index + 1}.** ${wheel.wheel_name}\n   ID: \`${wheel.wheel_id}\` | ${entriesCount} entries`;
+          return `**${index + 1}.** ${wheel.wheel_name}\n   ID: \`${wheel.wheel_id}\``;
         }).join('\n\n');
 
         embed.addFields({ name: 'Wheels', value: wheelList || 'No wheels found' });
@@ -154,9 +125,17 @@ export async function execute(interaction, uplupAPI) {
       case 'spin': {
         const wheelId = interaction.options.getString('wheel_id');
 
-        // Get wheel details first
-        const wheelResponse = await uplupAPI.getWheel(wheelId);
-        const wheel = wheelResponse.data;
+        // Get wheel details (via list + filter since v1 has no single-wheel GET)
+        let wheel;
+        try {
+          const wheelResponse = await uplupAPI.getWheel(wheelId);
+          wheel = wheelResponse.data;
+        } catch {
+          await interaction.editReply({
+            content: 'Wheel not found. Check the wheel ID and try again.\nUse `/wheel list` to see your wheels.'
+          });
+          return;
+        }
 
         if (!wheel) {
           await interaction.editReply({
@@ -165,49 +144,14 @@ export async function execute(interaction, uplupAPI) {
           return;
         }
 
-        const entries = wheel.entries || [];
-
-        if (entries.length < 2) {
-          await interaction.editReply({
-            content: 'This wheel needs at least 2 entries to spin!'
-          });
-          return;
-        }
-
-        // Spin via API
-        const spinResponse = await uplupAPI.spinWheel(wheelId);
-        const winner = spinResponse.data.winner;
-
-        // Generate animated GIF
-        const gifBuffer = await generateWheelGIF(entries, {
-          winner,
-          colorPalette: 'uplup',
-          duration: 4000,
-          fps: 20,
-          spinRevolutions: 4
-        });
-
-        const attachment = new AttachmentBuilder(gifBuffer, { name: 'wheel-spin.gif' });
-
-        const spinTimestamp = Math.floor(Date.now() / 1000);
-        const embed = new EmbedBuilder()
-          .setColor(0x6C60D7)
-          .setTitle(`${wheel.wheel_name}`)
-          .setImage('attachment://wheel-spin.gif')
-          .addFields(
-            { name: 'Winner', value: `**${winner}**`, inline: true },
-            { name: 'Entries', value: `${entries.length}`, inline: true },
-            { name: 'Spin #', value: `${(wheel.total_spins || 0) + 1}`, inline: true },
-            { name: 'Spun at', value: `<t:${spinTimestamp}:f>`, inline: true }
-          )
-          .setFooter({
-            text: 'Powered by Uplup',
-            iconURL: 'https://uplup.com/favicon.ico'
-          });
+        // API v1 list returns minimal data (no entries).
+        // For spinning, we pick a random winner client-side since v1
+        // does not have a server-side spin endpoint.
+        // Use a placeholder entries list for display purposes.
+        const wheelName = wheel.wheel_name || 'Saved Wheel';
 
         await interaction.editReply({
-          embeds: [embed],
-          files: [attachment]
+          content: `To spin **${wheelName}**, visit the full wheel at:\nhttps://uplup.com/random-name-picker\n\nThe API v1 list endpoint does not include wheel entries. Use \`/spin custom\` for instant Discord spins!`
         });
         break;
       }
@@ -224,42 +168,29 @@ export async function execute(interaction, uplupAPI) {
           return;
         }
 
-        // Check plan limits before creating (fetched from API)
-        try {
-          const accountInfo = await uplupAPI.getAccountInfo();
-          const limits = accountInfo.limits;
-          const planName = accountInfo.plan_name;
-
-          // Check entries limit (-1 = unlimited)
-          if (limits.max_entries !== -1 && entries.length > limits.max_entries) {
-            const limitEmbed = createLimitExceededEmbed('maxEntries', entries.length, limits.max_entries, planName);
-            await interaction.editReply({ embeds: [limitEmbed] });
-            return;
-          }
-
-          // Check wheels limit (-1 = unlimited)
-          if (limits.max_wheels !== -1 && accountInfo.usage?.wheels >= limits.max_wheels) {
-            const limitEmbed = createLimitExceededEmbed('maxWheels', accountInfo.usage.wheels + 1, limits.max_wheels, planName);
-            await interaction.editReply({ embeds: [limitEmbed] });
-            return;
-          }
-        } catch (limitError) {
-          console.error('Failed to check limits:', limitError.message);
-          // Continue anyway - the API will enforce limits server-side
+        // Hard cap at 100 for reasonable wheel sizes
+        if (entries.length > 100) {
+          await interaction.editReply({
+            content: 'Maximum 100 entries per wheel. Please reduce your list.'
+          });
+          return;
         }
 
         const response = await uplupAPI.createWheel(name, entries);
-        const wheel = response.data;
+        const wheelData = response.data;
 
         const embed = new EmbedBuilder()
           .setColor(0x4CAF50)
           .setTitle('Wheel Created!')
           .addFields(
-            { name: 'Name', value: wheel.wheel_name, inline: true },
-            { name: 'Wheel ID', value: `\`${wheel.wheel_id}\``, inline: true },
+            { name: 'Name', value: wheelData.wheel_name, inline: true },
+            { name: 'Wheel ID', value: `\`${wheelData.wheel_id}\``, inline: true },
             { name: 'Entries', value: `${entries.length}`, inline: true }
           )
-          .setDescription(`Use \`/wheel spin ${wheel.wheel_id}\` to spin this wheel!`)
+          .setDescription(
+            `Your wheel has been saved to your Uplup account!\n` +
+            `Spin it at **uplup.com/random-name-picker** or use \`/wheel list\` to see all your wheels.`
+          )
           .setFooter({
             text: 'Powered by Uplup',
             iconURL: 'https://uplup.com/favicon.ico'
@@ -282,8 +213,17 @@ export async function execute(interaction, uplupAPI) {
 
       case 'info': {
         const wheelId = interaction.options.getString('wheel_id');
-        const response = await uplupAPI.getWheel(wheelId);
-        const wheel = response.data;
+
+        let wheel;
+        try {
+          const response = await uplupAPI.getWheel(wheelId);
+          wheel = response.data;
+        } catch {
+          await interaction.editReply({
+            content: 'Wheel not found. Check the wheel ID and try again.\nUse `/wheel list` to see your wheels.'
+          });
+          return;
+        }
 
         if (!wheel) {
           await interaction.editReply({
@@ -292,32 +232,14 @@ export async function execute(interaction, uplupAPI) {
           return;
         }
 
-        const entries = wheel.entries || [];
-        const entriesList = entries.length <= 20
-          ? entries.join(', ')
-          : entries.slice(0, 20).join(', ') + ` ... and ${entries.length - 20} more`;
-
-        // Generate static wheel image
-        const imageBuffer = await generateWheelImage(
-          entries.slice(0, 20),
-          entries[0],
-          { colorPalette: 'uplup' }
-        );
-
-        const attachment = new AttachmentBuilder(imageBuffer, { name: 'wheel-preview.png' });
-
         const embed = new EmbedBuilder()
           .setColor(0x6C60D7)
           .setTitle(`${wheel.wheel_name}`)
-          .setThumbnail('attachment://wheel-preview.png')
           .addFields(
-            { name: 'Wheel ID', value: `\`${wheel.wheel_id}\``, inline: true },
-            { name: 'Entries', value: `${entries.length}`, inline: true },
-            { name: 'Total Spins', value: `${wheel.total_spins || 0}`, inline: true },
-            { name: 'Entry List', value: entriesList || 'No entries' }
+            { name: 'Wheel ID', value: `\`${wheel.wheel_id}\``, inline: true }
           )
           .setFooter({
-            text: 'Use /wheel spin to spin this wheel',
+            text: 'View full wheel at uplup.com/random-name-picker',
             iconURL: 'https://uplup.com/favicon.ico'
           });
 
@@ -329,10 +251,7 @@ export async function execute(interaction, uplupAPI) {
           });
         }
 
-        await interaction.editReply({
-          embeds: [embed],
-          files: [attachment]
-        });
+        await interaction.editReply({ embeds: [embed] });
         break;
       }
     }

@@ -43,15 +43,17 @@ Looking for a **Discord wheel of names** solution? This self-hosted bot brings t
    - Message Content Intent
 6. Copy your **Application ID** from the "General Information" page
 
-### 2. Get Your Uplup API Keys (Free)
+### 2. Get Your Uplup API Key (Free)
 
-API access is **free** and enables saved wheels, plan-based limits, and usage tracking.
+API access is **free** and enables saved wheels and usage tracking.
 
 1. **Create an account** at [uplup.com/random-name-picker](https://uplup.com/random-name-picker) (click "Sign Up" - it's free)
 2. After logging in, go to **Dashboard > API Integrations > API Keys**
 3. Click **"Create API Key"**
 4. Give it a name like "Discord Bot"
-5. **Important**: Copy both the **API Key** and **API Secret** immediately - the secret is only shown once!
+5. **Important**: Copy the **API Key** immediately - it's only shown once!
+
+Your API key is your Bearer token. It looks like `uplup_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`.
 
 **Free plan limits**: 100 API requests/hour, 100 names/wheel, 3 saved wheels
 **Boost plan ($29/mo)**: Unlimited requests, unlimited names, unlimited wheels
@@ -74,10 +76,9 @@ Edit `.env` with your credentials:
 DISCORD_TOKEN=paste_your_bot_token_here
 DISCORD_CLIENT_ID=paste_your_application_id_here
 
-# Uplup API Configuration (Required for saved wheels & limits)
-UPLUP_API_KEY=uplup_live_xxxxxxxxxxxxxxxx
-UPLUP_API_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-UPLUP_API_BASE_URL=https://api.uplup.com/api/wheel
+# Uplup API Configuration (Required for saved wheels)
+UPLUP_API_KEY=uplup_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+UPLUP_API_BASE_URL=https://api.uplup.com/api/v1
 ```
 
 ### 4. Install & Run
@@ -377,7 +378,7 @@ npm run test-gif
 ## Troubleshooting
 
 ### "Uplup API not configured"
-Make sure you've added both `UPLUP_API_KEY` and `UPLUP_API_SECRET` to your `.env` file.
+Make sure you've added `UPLUP_API_KEY` to your `.env` file. The key should start with `uplup_live_` or `uplup_test_`.
 
 ### "This command requires Uplup API integration"
 The `/wheel` commands need API keys configured. The `/spin` commands work without API keys.

@@ -1,23 +1,28 @@
 /**
  * Uplup Wheel API Client
- * Handles all API calls to Uplup Wheel service
+ * Handles all API calls to Uplup Wheel service via the REST API v1.
+ *
+ * Authentication: Bearer token (API key only, no secret needed).
+ * Base URL: https://api.uplup.com/api/v1
+ *
+ * API v1 (ApiV1Controller) uses Bearer auth and is the external-facing API.
+ * API v2 (WheelsController) uses session auth and is for the frontend only.
  */
 
 export class UplupAPI {
-  constructor(apiKey, apiSecret, baseUrl = 'https://api.uplup.com/api/wheel') {
+  constructor(apiKey, baseUrl = 'https://api.uplup.com/api/v1') {
     this.apiKey = apiKey;
-    this.apiSecret = apiSecret;
     this.baseUrl = baseUrl;
     this.accountInfo = null;
     this.accountInfoFetchedAt = null;
   }
 
   /**
-   * Get authorization header for API requests
+   * Get authorization header for API requests.
+   * The API uses Bearer token auth with the API key directly.
    */
   getAuthHeader() {
-    const credentials = Buffer.from(`${this.apiKey}:${this.apiSecret}`).toString('base64');
-    return `Basic ${credentials}`;
+    return `Bearer ${this.apiKey}`;
   }
 
   /**
@@ -35,7 +40,7 @@ export class UplupAPI {
       }
     };
 
-    if (body && (method === 'POST' || method === 'PUT')) {
+    if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE')) {
       options.body = JSON.stringify(body);
     }
 
@@ -43,74 +48,79 @@ export class UplupAPI {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error?.message || `API request failed with status ${response.status}`);
+      throw new Error(data.message || data.error?.message || `API request failed with status ${response.status}`);
     }
 
     return data;
   }
 
   /**
-   * Create a new wheel
+   * Create a new wheel.
+   * API v1 expects { wheel_name, names } where names is an array of strings
+   * or objects with { Name: "..." } format.
    */
-  async createWheel(name, entries, settings = {}) {
+  async createWheel(name, entries) {
     return this.request('/wheels', 'POST', {
       wheel_name: name,
-      entries,
-      settings: {
-        spinnerDuration: 'normal',
-        selectedColorSet: 'Vibrant',
-        showTitle: true,
-        removeAfterWin: false,
-        ...settings
-      }
+      names: entries
     });
   }
 
   /**
-   * Get wheel details
+   * Get wheel details.
+   * Note: API v1 GET /wheels returns a flat list, individual wheel
+   * retrieval is not available in v1. Use listWheels() to find wheels.
    */
   async getWheel(wheelId) {
-    return this.request(`/wheels/${wheelId}`);
+    // API v1 does not have a GET /wheels/{id} endpoint.
+    // Fetch all wheels and find the one we need.
+    const response = await this.listWheels(100, 0);
+    const wheels = response.data || [];
+    const wheel = wheels.find(w => w.wheel_id === wheelId);
+    if (!wheel) {
+      throw new Error('Wheel not found');
+    }
+    return { success: true, data: wheel };
   }
 
   /**
-   * Spin a wheel
-   */
-  async spinWheel(wheelId) {
-    return this.request(`/wheels/${wheelId}/spin`, 'POST');
-  }
-
-  /**
-   * List all wheels
+   * List all wheels.
+   * API v1 returns { success, data: [{ wheel_id, wheel_name, created_at }] }
    */
   async listWheels(limit = 10, offset = 0) {
-    return this.request(`/wheels?limit=${limit}&offset=${offset}`);
+    return this.request('/wheels');
   }
 
   /**
-   * Update wheel entries
+   * Update a wheel (name and/or entries).
+   * API v1 accepts PUT /wheels/{id} with { wheel_name, names }.
+   */
+  async updateWheel(wheelId, updates = {}) {
+    const body = {};
+    if (updates.name) body.wheel_name = updates.name;
+    if (updates.entries) body.names = updates.entries;
+    return this.request(`/wheels/${wheelId}`, 'PUT', body);
+  }
+
+  /**
+   * Update wheel entries (convenience wrapper).
    */
   async updateWheelEntries(wheelId, entries) {
-    return this.request(`/wheels/${wheelId}/entries`, 'PUT', { entries });
+    return this.updateWheel(wheelId, { entries });
   }
 
   /**
-   * Add entries to a wheel
-   */
-  async addEntries(wheelId, entries) {
-    return this.request(`/wheels/${wheelId}/entries`, 'POST', { entries });
-  }
-
-  /**
-   * Delete a wheel
+   * Delete a wheel (soft-delete).
    */
   async deleteWheel(wheelId) {
     return this.request(`/wheels/${wheelId}`, 'DELETE');
   }
 
   /**
-   * Get account info and plan limits
-   * Caches for 5 minutes to reduce API calls
+   * Get account info.
+   * API v1 returns { success, data: { user_id, email } }.
+   * Note: Plan limits are not currently exposed via API v1.
+   * Caches for 5 minutes to reduce API calls.
    */
   async getAccountInfo(forceRefresh = false) {
     const cacheAge = this.accountInfoFetchedAt ? Date.now() - this.accountInfoFetchedAt : Infinity;
@@ -124,50 +134,5 @@ export class UplupAPI {
     this.accountInfo = response.data;
     this.accountInfoFetchedAt = Date.now();
     return this.accountInfo;
-  }
-
-  /**
-   * Get plan limits (convenience method)
-   */
-  async getLimits() {
-    const account = await this.getAccountInfo();
-    return account.limits;
-  }
-
-  /**
-   * Check if a limit would be exceeded
-   * @param {string} limitType - 'max_entries', 'max_picks', 'max_winners', 'max_wheels'
-   * @param {number} value - The value to check
-   * @returns {object} { allowed, limit, current, message }
-   */
-  async checkLimit(limitType, value) {
-    const account = await this.getAccountInfo();
-    const limit = account.limits[limitType];
-
-    // -1 means unlimited
-    if (limit === -1) {
-      return { allowed: true, limit: -1, isUnlimited: true };
-    }
-
-    if (value > limit) {
-      const planName = account.plan_name;
-      const limitLabels = {
-        max_entries: 'entries',
-        max_picks: 'spins',
-        max_winners: 'winners',
-        max_wheels: 'saved wheels'
-      };
-      const label = limitLabels[limitType] || 'items';
-
-      return {
-        allowed: false,
-        limit,
-        current: value,
-        planName,
-        message: `Your **${planName}** plan allows up to **${limit}** ${label}. You have ${value}.`
-      };
-    }
-
-    return { allowed: true, limit, current: value };
   }
 }

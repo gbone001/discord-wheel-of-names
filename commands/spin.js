@@ -1,40 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } from 'discord.js';
 import { generateWheelGIF, generateWheelImage, COLOR_PALETTES } from '../wheel-generator.js';
 
-// Default limits when API is not configured (standalone mode)
-const STANDALONE_LIMITS = {
-  maxEntries: 50, // Reasonable default for standalone
-  planName: 'Standalone'
-};
-
-/**
- * Create an embed for limit exceeded error
- */
-function createLimitExceededEmbed(limitType, current, limit, planName) {
-  const labels = {
-    maxEntries: 'entries',
-    maxWheels: 'saved wheels'
-  };
-  const label = labels[limitType] || 'items';
-
-  return new EmbedBuilder()
-    .setColor(0xFF6B6B)
-    .setTitle(`Limit Reached`)
-    .setDescription(
-      `Your **${planName}** plan allows up to **${limit}** ${label}.\n` +
-      `You have **${current}**.\n\n` +
-      `Upgrade your plan for higher limits!`
-    )
-    .addFields({
-      name: 'Upgrade Now',
-      value: '[View Pricing](https://uplup.com/pricing)'
-    })
-    .setFooter({
-      text: 'Uplup',
-      iconURL: 'https://uplup.com/favicon.ico'
-    });
-}
-
 export const data = new SlashCommandBuilder()
   .setName('spin')
   .setDescription('Spin a wheel to pick a random winner')
@@ -252,28 +218,6 @@ export async function execute(interaction, uplupAPI) {
       return;
     }
 
-    // Get plan limits from API if configured
-    let maxEntries = STANDALONE_LIMITS.maxEntries;
-    let planName = STANDALONE_LIMITS.planName;
-
-    if (uplupAPI) {
-      try {
-        const accountInfo = await uplupAPI.getAccountInfo();
-        planName = accountInfo.plan_name;
-        maxEntries = accountInfo.limits.max_entries;
-      } catch (apiError) {
-        console.error('Failed to fetch plan limits:', apiError.message);
-        // Continue with standalone limits
-      }
-    }
-
-    // Check entries limit (-1 means unlimited)
-    if (maxEntries !== -1 && entries.length > maxEntries) {
-      const limitEmbed = createLimitExceededEmbed('maxEntries', entries.length, maxEntries, planName);
-      await interaction.editReply({ embeds: [limitEmbed] });
-      return;
-    }
-
     // Hard cap at 100 for performance (GIF rendering)
     if (entries.length > 100) {
       entries = entries.slice(0, 100);
@@ -312,14 +256,15 @@ export async function execute(interaction, uplupAPI) {
         iconURL: 'https://uplup.com/favicon.ico'
       });
 
-    // Log to Uplup API if available
+    // Log to Uplup API if available (creates a temporary wheel for tracking)
     if (uplupAPI) {
       try {
         const createResponse = await uplupAPI.createWheel(wheelName, entries);
-        const wheelId = createResponse.data.wheel_id;
-        await uplupAPI.spinWheel(wheelId);
-        // Clean up temporary wheel
-        await uplupAPI.deleteWheel(wheelId);
+        const wheelId = createResponse.data?.wheel_id;
+        if (wheelId) {
+          // Clean up temporary wheel
+          await uplupAPI.deleteWheel(wheelId);
+        }
       } catch (apiError) {
         // Silently fail API logging - don't break the user experience
         console.error('Uplup API logging failed:', apiError.message);
